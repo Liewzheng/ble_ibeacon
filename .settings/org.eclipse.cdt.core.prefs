@@ -1,0 +1,12 @@
+eclipse.preferences.version=1
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/BATCH_BUILD/delimiter=;
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/BATCH_BUILD/operation=append
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/BATCH_BUILD/value=1
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/IDF_PATH/delimiter=;
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/IDF_PATH/operation=append
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/IDF_PATH/value=C\:\\msys32\\home\\AtomTech\\esp\\esp-idf
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/PATH/delimiter=;
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/PATH/operation=replace
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/PATH/value=C\:\\msys32\\mingw32\\bin;C\:\\msys32\\opt\\xtensa-esp32-elf\\bin;C\:\\msys32\\usr\\bin;C\:/Program Files/Java/jre1.8.0_192/bin/server;C\:/Program Files/Java/jre1.8.0_192/bin;C\:/Program Files/Java/jre1.8.0_192/lib/amd64;C\:\\Program Files (x86)\\Common Files\\Oracle\\Java\\javapath;C\:\\Windows\\system32;C\:\\Windows;C\:\\Windows\\System32\\Wbem;C\:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C\:\\Program Files\\nodejs\\;C\:\\Program Files\\Git\\cmd;C\:\\Users\\AtomTech\\AppData\\Roaming\\npm;C\:\\Users\\AtomTech\\AppData\\Local\\GitHubDesktop\\bin;C\:\\Users\\AtomTech\\AppData\\Local\\atom\\bin;D\:\\AtomTech\\Desktop
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/append=true
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.349768231/appendContributed=true
