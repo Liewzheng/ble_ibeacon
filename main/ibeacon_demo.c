@@ -134,10 +134,13 @@ static esp_ble_adv_params_t ble_adv_params = {
 //0C F3 EE Filter_conditionor
 int Device_Address_Filter(unsigned char *Address)
 {
-	int Filter[3]={0x0C,0xF3,0xEE};
+	int Filter[6]={0x0C,0xF3,0xEE,0x34,0x4F,0xD2};
 	if(Filter[0]==*(Address+0) &&
 	   Filter[1]==*(Address+1) &&
-	   Filter[2]==*(Address+2))
+	   Filter[2]==*(Address+2) &&
+	   Filter[3]==*(Address+3) &&
+	   Filter[4]==*(Address+4) &&
+	   Filter[5]==*(Address+5))
 		return 1;
 	else
 		return 0;
