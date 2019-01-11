@@ -38,6 +38,15 @@ esp_ble_ibeacon_head_t ibeacon_common_head = {
     .beacon_type = 0x1502
 };
 
+/* Constant part of alternative data */
+esp_ble_ibeacon_head_t ibeacon_common_head_alternative = {
+    .flags = {0x02, 0x01, 0x06},
+    .length = 0x1A,
+    .type = 0xFF,
+    .company_id = 0x005A,
+    .beacon_type = 0x1503
+};
+
 /* Vendor part of iBeacon data*/
 esp_ble_ibeacon_vendor_t vendor_config = {
     .proximity_uuid = ESP_UUID,
@@ -50,9 +59,10 @@ bool esp_ble_is_ibeacon_packet (uint8_t *adv_data, uint8_t adv_data_len){
     bool result = false;
 
     if ((adv_data != NULL) && (adv_data_len == 0x1E)){
-        if (!memcmp(adv_data, (uint8_t*)&ibeacon_common_head, sizeof(ibeacon_common_head))){
+        if (!memcmp(adv_data, (uint8_t*) & ibeacon_common_head,             sizeof(ibeacon_common_head))
+        	||!memcmp(adv_data, (uint8_t*) & ibeacon_common_head_alternative, sizeof(ibeacon_common_head_alternative))  )
             result = true;
-        }
+
     }
 
     return result;
