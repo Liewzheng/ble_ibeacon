@@ -89,21 +89,23 @@ extern esp_ble_ibeacon_vendor_t vendor_config;
 
 /* =============================================================================
  * New Defined Value:
- * 1. Device Number
+ * 1. Device Number        //The device scanned number
  * 2. Device Information:
- * 	  - MAC Address
+ * 	  - MAC Address (3rd 4th 5th)
  * ============================================================================*/
 int Device_Number_g = 0;
-struct Device_Information{
-	unsigned char Device_Address[1][1][1][256][256][256];
-	int Device_Address_Record_Times;
-	int Device_Number;
-};
+int Device_Scanned_Number_g = 0;
+//int New_Device_Scanned_Number_g = 0;
+typedef struct{
+	unsigned char Device_Address_3;
+	unsigned char Device_Address_4;
+	unsigned char Device_Address_5;
+	//int MajorID;
+	//int MinorID;
+	int Scanned_Time;
+}Device_Information;
 
-struct Device_Information Device_Information_Recorded;
-//Device_Information_Recorded->Device_Address_Record_Times = 0;
-//Device_Information_Recorded->Device_Number = 0;
-
+Device_Information DIR[100];
 
 
 // Declare static functions
@@ -131,28 +133,59 @@ static esp_ble_adv_params_t ble_adv_params = {
 };
 #endif
 
+
+/* =============================================================================
+ * int Device_Address_Filter(unsigned char *Address)                 //过滤器
+ * int Device_Address_Repeat_Preventation(unsigned char *Address)    //重复查询
+ * int Device_Address_Record(unsigned char *Address)                 //记录
+ * ============================================================================*/
 //0C F3 EE Filter_conditionor
 int Device_Address_Filter(unsigned char *Address)
 {
-	int Filter[6]={ 0x0C,
+	int Filter[3]={ 0x0C,
 					0xF3,
-					0xEE,
-					0x51,
-					0x7B,
-					0x08
+					0xEE
 				  };
 	if(Filter[0]==*(Address+0) &&
 	   Filter[1]==*(Address+1) &&
-	   Filter[2]==*(Address+2) &&
-	   Filter[3]==*(Address+3) &&
-	   Filter[4]==*(Address+4) &&
-	   Filter[5]==*(Address+5)
+	   Filter[2]==*(Address+2)
 	   )
 		return 1;
 	else
 		return 0;
 }
 
+
+int Device_Address_Repeat_Preventation(unsigned char *Address)
+{
+	int i=0;
+	for(;i<Device_Number_g;i++){
+		if( DIR[i].Device_Address_3 == *(Address+3) &&
+			DIR[i].Device_Address_4 == *(Address+4) &&
+			DIR[i].Device_Address_5 == *(Address+5) )
+		{
+			return 1;           //1 represents Repeat-Device
+		}
+	}
+
+	if(i<100) DIR[i].Scanned_Time++;
+	return 0;                  //0 represents New-Device
+}
+
+int Device_Address_Record(unsigned char *Address)
+{
+	if(Device_Number_g > 100) return 0;             //0 represents "do not record"
+	if(!Device_Address_Repeat_Preventation(Address))
+	{
+		DIR[Device_Number_g].Device_Address_3 = *(Address+3);
+		DIR[Device_Number_g].Device_Address_4 = *(Address+4);
+		DIR[Device_Number_g].Device_Address_5 = *(Address+5);
+		Device_Number_g++;
+		return 1;                                    //1 represents "recorded successfully"
+	}
+	else
+		return 0;
+}
 
 
 /*======================================================
@@ -193,25 +226,28 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
         case ESP_GAP_SEARCH_INQ_RES_EVT:
             /* Search for BLE iBeacon Packet */
             if (esp_ble_is_ibeacon_packet(scan_result->scan_rst.ble_adv, scan_result->scan_rst.adv_data_len)){
-            	//Condition Added Here
-            	if(Device_Address_Filter(&(scan_result->scan_rst.bda)))
-            	{
-					esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
-					ESP_LOGI(DEMO_TAG, "----------iBeacon Found----------");
+            	if(Device_Address_Filter(&(scan_result->scan_rst.bda)) ){                //Device MAC Filter
+            		ESP_LOGI(DEMO_TAG, "[System] Total Device Scanned: %d ", ++Device_Scanned_Number_g);
+					if( Device_Address_Record(&(scan_result->scan_rst.bda)) ) {                                           //Device list was still unfinished
 
-					esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
-					esp_log_buffer_hex("IBEACON: Proximity UUID", ibeacon_data->ibeacon_vendor.proximity_uuid, ESP_UUID_LEN_128);
-
-					uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
-					uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
-					ESP_LOGI(DEMO_TAG, "Major: 0x%04x (%d)", major, major);
-					ESP_LOGI(DEMO_TAG, "Minor: 0x%04x (%d)", minor, minor);
-					ESP_LOGI(DEMO_TAG, "Measured power (RSSI at a 1m distance):%d dBm", ibeacon_data->ibeacon_vendor.measured_power);
-					ESP_LOGI(DEMO_TAG, "RSSI of packet:%d dBm", scan_result->scan_rst.rssi);
-					ESP_LOGI(DEMO_TAG, "[System] Device Scanned Number: %d ", ++Device_Number_g);
+						esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
+						ESP_LOGI(DEMO_TAG, "----------New Beacon Found----------");
+						esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
+						uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
+						uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
+						ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04x (%d), 0x%04x (%d)", major, major, minor, minor);
+						ESP_LOGI(DEMO_TAG, "[System] New Device Scanned: %d ", Device_Number_g);
+					}
+					else{
+						esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
+						ESP_LOGI(DEMO_TAG, "----------Old Beacon Found----------");
+						esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
+						uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
+						uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
+						ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04x (%d), 0x%04x (%d)", major, major, minor, minor);
+					}
             	}
-
-            }
+			}
             break;
         default:
             break;
