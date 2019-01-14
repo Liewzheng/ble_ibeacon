@@ -1,23 +1,3 @@
-/*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
-
-
-/****************************************************************************
-*
-* This file is for iBeacon demo. It supports both iBeacon sender and receiver
-* which is distinguished by macros IBEACON_SENDER and IBEACON_RECEIVER,
-*
-* iBeacon is a trademark of Apple Inc. Before building devices which use iBeacon technology,
-* visit https://developer.apple.com/ibeacon/ to obtain a license.
-*
-****************************************************************************/
-
 #include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
@@ -54,7 +34,7 @@
 
 #include "tcpip_adapter.h"
 
-//typedef unsigned char           uint8_t;
+
 
 /* ============================================================================
  * 1. Configuration of WiFi
@@ -75,6 +55,8 @@ static EventGroupHandle_t s_wifi_event_group;
 
 const int WIFI_CONNECTED_BIT = BIT0;
 
+
+
 /* ============================================================================
  * 1. TAG:
  *  - DEMO_TAG
@@ -90,7 +72,8 @@ extern esp_ble_ibeacon_vendor_t vendor_config;
 /* =============================================================================
  * New Defined Value:
  * 1. Device Number        //The device scanned number
- * 2. Device Information:
+ * 2. Device Scan
+ * 3. Device Information:
  * 	  - MAC Address (3rd 4th 5th)
  * ============================================================================*/
 int Device_Number_g = 0;
@@ -111,27 +94,16 @@ Device_Information DIR[100];
 // Declare static functions
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
 
-// iBeacon Mode Setting
-#if (IBEACON_MODE == IBEACON_RECEIVER)
+// iBeacon Receiver Mode Setting
 static esp_ble_scan_params_t ble_scan_params = {
     .scan_type              = BLE_SCAN_TYPE_ACTIVE,
     .own_addr_type          = BLE_ADDR_TYPE_PUBLIC,
     .scan_filter_policy     = BLE_SCAN_FILTER_ALLOW_ALL,
-    .scan_interval          = 0x50,
-    .scan_window            = 0x30,
+    .scan_interval          = 0x01,
+    .scan_window            = 0x80,
     .scan_duplicate         = BLE_SCAN_DUPLICATE_DISABLE
 };
 
-#elif (IBEACON_MODE == IBEACON_SENDER)
-static esp_ble_adv_params_t ble_adv_params = {
-    .adv_int_min        = 0x20,
-    .adv_int_max        = 0x40,
-    .adv_type           = ADV_TYPE_NONCONN_IND,
-    .own_addr_type      = BLE_ADDR_TYPE_PUBLIC,
-    .channel_map        = ADV_CHNL_ALL,
-    .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
-};
-#endif
 
 
 /* =============================================================================
@@ -155,26 +127,25 @@ int Device_Address_Filter(unsigned char *Address)
 		return 0;
 }
 
-
 int Device_Address_Repeat_Preventation(unsigned char *Address)
 {
 	int i=0;
-	for(;i<Device_Number_g;i++){
+	for(;i<Device_Number_g;i++)
+	{
 		if( DIR[i].Device_Address_3 == *(Address+3) &&
 			DIR[i].Device_Address_4 == *(Address+4) &&
 			DIR[i].Device_Address_5 == *(Address+5) )
 		{
+			DIR[i].Scanned_Time++;
 			return 1;           //1 represents Repeat-Device
 		}
 	}
-
-	if(i<100) DIR[i].Scanned_Time++;
 	return 0;                  //0 represents New-Device
 }
 
 int Device_Address_Record(unsigned char *Address)
 {
-	if(Device_Number_g > 100) return 0;             //0 represents "do not record"
+	//if(Device_Number_g > 100) return 0;             //0 represents "do not record"
 	if(!Device_Address_Repeat_Preventation(Address))
 	{
 		DIR[Device_Number_g].Device_Address_3 = *(Address+3);
@@ -190,76 +161,76 @@ int Device_Address_Record(unsigned char *Address)
 
 /*======================================================
  * iBeacon Events Handler:
- * ---ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT
  * ---ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT
  * ---ESP_GAP_BLE_SCAN_START_COMPLETE_EVT
- * ---ESP_GAP_BLE_ADV_START_COMPLETE_EVT
  * ---ESP_GAP_BLE_SCAN_RESULT_EVT
  *    |---ESP_GAP_SEARCH_INQ_RES_EVT
  * ---ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT
- * ---ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT
  *====================================================*/
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     esp_err_t err;
 
     switch (event) {
-    case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT: {
-#if (IBEACON_MODE == IBEACON_RECEIVER)
+    case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT:
+    {
         //the unit of the duration is second, 0 means scan permanently
         uint32_t duration = 0;
         esp_ble_gap_start_scanning(duration);
-#endif
         break;
     }
     case ESP_GAP_BLE_SCAN_START_COMPLETE_EVT:
         //scan start complete event to indicate scan start successfully or failed
-        if ((err = param->scan_start_cmpl.status) != ESP_BT_STATUS_SUCCESS) {
+        if ((err = param->scan_start_cmpl.status) != ESP_BT_STATUS_SUCCESS)
+        {
             ESP_LOGE(DEMO_TAG, "[System] Scan start failed: %s", esp_err_to_name(err));
         }
         break;
-    case ESP_GAP_BLE_SCAN_RESULT_EVT: {
-
+    case ESP_GAP_BLE_SCAN_RESULT_EVT:
+    {
         esp_ble_gap_cb_param_t *scan_result = (esp_ble_gap_cb_param_t *)param;
-
-        switch (scan_result->scan_rst.search_evt) {
-        case ESP_GAP_SEARCH_INQ_RES_EVT:
-            /* Search for BLE iBeacon Packet */
-            if (esp_ble_is_ibeacon_packet(scan_result->scan_rst.ble_adv, scan_result->scan_rst.adv_data_len)){
-            	if(Device_Address_Filter(&(scan_result->scan_rst.bda)) ){                //Device MAC Filter
-            		ESP_LOGI(DEMO_TAG, "[System] Total Device Scanned: %d ", ++Device_Scanned_Number_g);
-					if( Device_Address_Record(&(scan_result->scan_rst.bda)) ) {                                           //Device list was still unfinished
-
-						esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
-						ESP_LOGI(DEMO_TAG, "----------New Beacon Found----------");
-						esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
-						uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
-						uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
-						ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04x (%d), 0x%04x (%d)", major, major, minor, minor);
-						ESP_LOGI(DEMO_TAG, "[System] New Device Scanned: %d ", Device_Number_g);
-					}
-					else{
-						esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
-						ESP_LOGI(DEMO_TAG, "----------Old Beacon Found----------");
-						esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
-						uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
-						uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
-						ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04x (%d), 0x%04x (%d)", major, major, minor, minor);
-					}
-            	}
-			}
+        switch (scan_result->scan_rst.search_evt)
+        {
+        	case ESP_GAP_SEARCH_INQ_RES_EVT:
+        		//Search for BLE iBeacon Packet
+        		if (esp_ble_is_ibeacon_packet(scan_result->scan_rst.ble_adv, scan_result->scan_rst.adv_data_len))
+        		{
+        			//Device MAC Address Filter
+        			if(Device_Address_Filter(&(scan_result->scan_rst.bda)) )
+        			{
+        				ESP_LOGI(DEMO_TAG, "[System] Total Device Scanned: %d ", ++Device_Scanned_Number_g);
+        				//New Beacon found
+        				if( Device_Address_Record(&(scan_result->scan_rst.bda)) )
+        				{
+        					ESP_LOGI(DEMO_TAG, "----------New Beacon Found----------");
+        					ESP_LOGI(DEMO_TAG, "[System] New Device Scanned: %d ", Device_Number_g);
+        				}
+        				//Old Beacon Found
+        				else
+        				{
+        					ESP_LOGI(DEMO_TAG, "----------Old Beacon Found----------");
+        				}
+        				esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
+        				esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
+        				uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
+        				uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
+        				ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04x (%d), 0x%04x (%d)", major, major, minor, minor);
+        			}
+        		}
             break;
-        default:
-            break;
+        	default:
+        	break;
         }
         break;
     }
 
     case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
-        if ((err = param->scan_stop_cmpl.status) != ESP_BT_STATUS_SUCCESS){
+        if ((err = param->scan_stop_cmpl.status) != ESP_BT_STATUS_SUCCESS)
+        {
             ESP_LOGE(DEMO_TAG, "[System] Scan stop failed: %s", esp_err_to_name(err));
         }
-        else {
+        else
+        {
             ESP_LOGI(DEMO_TAG, "[System] Stop scan successfully");
         }
         break;
@@ -280,7 +251,6 @@ void ble_ibeacon_appRegister(void)
         ESP_LOGE(DEMO_TAG, "[System] gap register error: %s", esp_err_to_name(status));
         return;
     }
-
 }
 
 void ble_ibeacon_init(void)
@@ -358,22 +328,10 @@ void app_main()
 
     ble_ibeacon_init();
     //Function Added Here
-    wifi_init_start();
-    tcpip_adapter_init();
+    //wifi_init_start();
+    //tcpip_adapter_init();
 
     /* set scan parameters */
-#if (IBEACON_MODE == IBEACON_RECEIVER)
     esp_ble_gap_set_scan_params(&ble_scan_params);
-
-#elif (IBEACON_MODE == IBEACON_SENDER)
-    esp_ble_ibeacon_t ibeacon_adv_data;
-    esp_err_t status = esp_ble_config_ibeacon_data (&vendor_config, &ibeacon_adv_data);
-    if (status == ESP_OK){
-        esp_ble_gap_config_adv_data_raw((uint8_t*)&ibeacon_adv_data, sizeof(ibeacon_adv_data));
-    }
-    else {
-        ESP_LOGE(DEMO_TAG, "[System] Config iBeacon data failed: %s\n", esp_err_to_name(status));
-    }
-#endif
 }
 
