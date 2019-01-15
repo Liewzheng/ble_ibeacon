@@ -178,15 +178,15 @@ int Device_Information_Record(unsigned char *Address, int Major, int Minor)
 int Device_Information_List()
 {
 	//
-	int i=0, j=Device_Number_g-10;
+	int i = 0, j = Device_Number_g - 10 ;
 
 	if(Device_Number_g >= 20)
 	{
 		ESP_LOGI(DEMO_TAG, "----------Device List----------");
-		for(;i<10;i++)
+		for(i = 0; i < 10; i++)
 			ESP_LOGI(DEMO_TAG, "%d, %d [%d]", DIR[i].MajorID , DIR[i].MinorID , i);
 		ESP_LOGI(DEMO_TAG, "\n");
-		for(;j<Device_Number_g;j++)
+		for(j = Device_Number_g-10; j < Device_Number_g; j++)
 			ESP_LOGI(DEMO_TAG, "%d, %d [%d]", DIR[j].MajorID , DIR[j].MinorID , j);
 		Device_Information_List_Flag = !Device_Information_List_Flag;
 		return 1;
@@ -203,11 +203,13 @@ int Device_Address_Sort()
 {
 	int i=0, j=0;
 	int INT_Temp;
-	unsigned char CHAR_Temp;
+	//unsigned char CHAR_Temp;
 
-	for(;i<Device_Number_g-1;i++)
+	ESP_LOGI(DEMO_TAG,"Device_Number_g = %d\r\n", Device_Number_g);
+
+	for(i = 0; i < (Device_Number_g - 1); i++)
 	{
-		for(;i<Device_Number_g-1-i;j++)
+		for(j = 0; j < Device_Number_g - 1 - i; j++)
 		{
 			if(DIR[j].MinorID > DIR[j+1].MinorID )
 			{
