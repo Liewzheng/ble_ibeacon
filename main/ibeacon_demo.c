@@ -76,31 +76,46 @@ extern esp_ble_ibeacon_vendor_t vendor_config;
  * 3. Device Information:
  * 	  - MAC Address (3rd 4th 5th)
  * ============================================================================*/
+#define Device_Number_Ceiling_g 100
+
 int Device_Number_g = 0;
 int Device_Scanned_Number_g = 0;
-//int New_Device_Scanned_Number_g = 0;
+int Device_Information_List_Flag = 1;
+
 typedef struct{
 	unsigned char Device_Address_3;
 	unsigned char Device_Address_4;
 	unsigned char Device_Address_5;
-	//int MajorID;
-	//int MinorID;
+	int MajorID;
+	int MinorID;
 	int Scanned_Time;
 }Device_Information;
 
-Device_Information DIR[100];
+Device_Information DIR[Device_Number_Ceiling_g];
+
+int ID_Array_Temp[Device_Number_Ceiling_g];
 
 
 // Declare static functions
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
 
-// iBeacon Receiver Mode Setting
+
+/* =============================================================================
+ * iBeacon Receiver Mode Setting
+ * 1. Scan type
+ * 2. Owner address type
+ * 3. Scan filter policy
+ * 4. Scan interval. This is defined as the time interval from when the Controller started its last LE scan until it begins the subsequent LE scan.
+ * 5. Scan window. The duration of the LE scan. LE_Scan_Window shall be less than or equal to LE_Scan_Interval。
+ * 6. The Scan_Duplicates parameter controls whether the Link Layer should filter out duplicate advertising reports (BLE_SCAN_DUPLICATE_ENABLE)
+ *    to the Host, or if the Link Layer should generate advertising reports for each packet received
+ * ============================================================================*/
 static esp_ble_scan_params_t ble_scan_params = {
     .scan_type              = BLE_SCAN_TYPE_ACTIVE,
     .own_addr_type          = BLE_ADDR_TYPE_PUBLIC,
     .scan_filter_policy     = BLE_SCAN_FILTER_ALLOW_ALL,
-    .scan_interval          = 0x01,
-    .scan_window            = 0x80,
+    .scan_interval          = 0x0010,
+    .scan_window            = 0x0010,
     .scan_duplicate         = BLE_SCAN_DUPLICATE_DISABLE
 };
 
@@ -109,7 +124,7 @@ static esp_ble_scan_params_t ble_scan_params = {
 /* =============================================================================
  * int Device_Address_Filter(unsigned char *Address)                 //过滤器
  * int Device_Address_Repeat_Preventation(unsigned char *Address)    //重复查询
- * int Device_Address_Record(unsigned char *Address)                 //记录
+ * int Device_Information_Record(unsigned char *Address)                 //记录
  * ============================================================================*/
 //0C F3 EE Filter_conditionor
 int Device_Address_Filter(unsigned char *Address)
@@ -143,7 +158,7 @@ int Device_Address_Repeat_Preventation(unsigned char *Address)
 	return 0;                  //0 represents New-Device
 }
 
-int Device_Address_Record(unsigned char *Address)
+int Device_Information_Record(unsigned char *Address, int Major, int Minor)
 {
 	//if(Device_Number_g > 100) return 0;             //0 represents "do not record"
 	if(!Device_Address_Repeat_Preventation(Address))
@@ -151,12 +166,77 @@ int Device_Address_Record(unsigned char *Address)
 		DIR[Device_Number_g].Device_Address_3 = *(Address+3);
 		DIR[Device_Number_g].Device_Address_4 = *(Address+4);
 		DIR[Device_Number_g].Device_Address_5 = *(Address+5);
+		DIR[Device_Number_g].MajorID = Major;
+		DIR[Device_Number_g].MinorID = Minor;
 		Device_Number_g++;
 		return 1;                                    //1 represents "recorded successfully"
 	}
 	else
 		return 0;
 }
+
+int Device_Information_List()
+{
+	//
+	int i=0, j=Device_Number_g-10;
+
+	if(Device_Number_g >= 20)
+	{
+		ESP_LOGI(DEMO_TAG, "----------Device List----------");
+		for(;i<10;i++)
+			ESP_LOGI(DEMO_TAG, "%d, %d [%d]", DIR[i].MajorID , DIR[i].MinorID , i);
+		ESP_LOGI(DEMO_TAG, "\n");
+		for(;j<Device_Number_g;j++)
+			ESP_LOGI(DEMO_TAG, "%d, %d [%d]", DIR[j].MajorID , DIR[j].MinorID , j);
+		Device_Information_List_Flag = !Device_Information_List_Flag;
+		return 1;
+	}
+	else
+	{
+		ESP_LOGI(DEMO_TAG,"[System] Device Number Required: 20 at least");
+		return 0;
+	}
+
+}
+
+int Device_Address_Sort()
+{
+	int i=0, j=0;
+	int INT_Temp;
+	unsigned char CHAR_Temp;
+
+	for(;i<Device_Number_g-1;i++)
+	{
+		for(;i<Device_Number_g-1-i;j++)
+		{
+			if(DIR[j].MinorID > DIR[j+1].MinorID )
+			{
+				INT_Temp = DIR[j+1].MinorID;
+				DIR[j+1].MinorID = DIR[j].MinorID;
+				DIR[j].MinorID = INT_Temp;
+
+				/*
+				CHAR_Temp = DIR[j+1].Device_Address_3;
+				DIR[j+1].Device_Address_3 = DIR[j].Device_Address_3;
+				DIR[j].Device_Address_3 = CHAR_Temp;
+
+				CHAR_Temp = DIR[j+1].Device_Address_4;
+				DIR[j+1].Device_Address_4 = DIR[j].Device_Address_4;
+				DIR[j].Device_Address_4 = CHAR_Temp;
+
+				CHAR_Temp = DIR[j+1].Device_Address_5;
+				DIR[j+1].Device_Address_5 = DIR[j].Device_Address_5;
+				DIR[j].Device_Address_5 = CHAR_Temp;
+				*/
+
+
+			}
+		}
+	}
+
+	return 1;
+}
+
 
 
 /*======================================================
@@ -196,25 +276,38 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
         		if (esp_ble_is_ibeacon_packet(scan_result->scan_rst.ble_adv, scan_result->scan_rst.adv_data_len))
         		{
         			//Device MAC Address Filter
-        			if(Device_Address_Filter(&(scan_result->scan_rst.bda)) )
+        			if(Device_Address_Filter(&(scan_result->scan_rst.bda)) && (Device_Number_g < Device_Number_Ceiling_g))
         			{
-        				ESP_LOGI(DEMO_TAG, "[System] Total Device Scanned: %d ", ++Device_Scanned_Number_g);
+        				esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
+        				uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
+        				uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
+
+        				//ESP_LOGI(DEMO_TAG, "[System] Total Device Scanned: %d ", ++Device_Scanned_Number_g);
         				//New Beacon found
-        				if( Device_Address_Record(&(scan_result->scan_rst.bda)) )
+        				if( Device_Information_Record( &(scan_result->scan_rst.bda) ,major, minor) )
         				{
         					ESP_LOGI(DEMO_TAG, "----------New Beacon Found----------");
         					ESP_LOGI(DEMO_TAG, "[System] New Device Scanned: %d ", Device_Number_g);
+        					esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
+        					ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04x (%d), 0x%04x (%d)", major, major, minor, minor);
         				}
         				//Old Beacon Found
+        				/*
         				else
         				{
         					ESP_LOGI(DEMO_TAG, "----------Old Beacon Found----------");
         				}
-        				esp_ble_ibeacon_t *ibeacon_data = (esp_ble_ibeacon_t*)(scan_result->scan_rst.ble_adv);
         				esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
-        				uint16_t major = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.major);
-        				uint16_t minor = ENDIAN_CHANGE_U16(ibeacon_data->ibeacon_vendor.minor);
         				ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04x (%d), 0x%04x (%d)", major, major, minor, minor);
+        				*/
+        			}
+        			else if(Device_Information_List_Flag && Device_Number_g == Device_Number_Ceiling_g)
+        			{
+        			    Device_Information_List();
+        			    Device_Address_Sort();
+        			    ESP_LOGI(DEMO_TAG, "----------After Sorted----------");
+        			    Device_Information_List_Flag = !Device_Information_List_Flag;
+        			    Device_Information_List();
         			}
         		}
             break;
@@ -319,7 +412,7 @@ void wifi_init_start()
 
 void app_main()
 {
-    ESP_ERROR_CHECK(nvs_flash_init());
+	ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
 
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
