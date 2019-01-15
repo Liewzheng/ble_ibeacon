@@ -118,6 +118,74 @@ int Device_Address_Repeat_Preventation(unsigned char *Address)
 }
 ```
 
+## 设备信息罗列
+```c
+int Device_Information_List()
+{
+	//
+	int i = 0, j = Device_Number_g - 10 ;
+
+	if(Device_Number_g >= 20)
+	{
+		ESP_LOGI(DEMO_TAG, "----------Device List----------");
+		for(i = 0; i < 10; i++)
+			ESP_LOGI(DEMO_TAG, "%d, %d [%d]", DIR[i].MajorID , DIR[i].MinorID , i);
+		ESP_LOGI(DEMO_TAG, "\n");
+		for(j = Device_Number_g-10; j < Device_Number_g; j++)
+			ESP_LOGI(DEMO_TAG, "%d, %d [%d]", DIR[j].MajorID , DIR[j].MinorID , j);
+		Device_Information_List_Flag = !Device_Information_List_Flag;
+		return 1;
+	}
+	else
+	{
+		ESP_LOGI(DEMO_TAG,"[System] Device Number Required: 20 at least");
+		return 0;
+	}
+
+}
+```
+
+## 设备排序（按照MinorID）
+```c
+int Device_Address_Sort()
+{
+	int i=0, j=0;
+	int INT_Temp;
+	//unsigned char CHAR_Temp;
+
+	ESP_LOGI(DEMO_TAG,"Device_Number_g = %d\r\n", Device_Number_g);
+
+	for(i = 0; i < (Device_Number_g - 1); i++)
+	{
+		for(j = 0; j < Device_Number_g - 1 - i; j++)
+		{
+			if(DIR[j].MinorID > DIR[j+1].MinorID )
+			{
+				INT_Temp = DIR[j+1].MinorID;
+				DIR[j+1].MinorID = DIR[j].MinorID;
+				DIR[j].MinorID = INT_Temp;
+
+				CHAR_Temp = DIR[j+1].Device_Address_3;
+				DIR[j+1].Device_Address_3 = DIR[j].Device_Address_3;
+				DIR[j].Device_Address_3 = CHAR_Temp;
+
+				CHAR_Temp = DIR[j+1].Device_Address_4;
+				DIR[j+1].Device_Address_4 = DIR[j].Device_Address_4;
+				DIR[j].Device_Address_4 = CHAR_Temp;
+
+				CHAR_Temp = DIR[j+1].Device_Address_5;
+				DIR[j+1].Device_Address_5 = DIR[j].Device_Address_5;
+				DIR[j].Device_Address_5 = CHAR_Temp;
+
+
+			}
+		}
+	}
+
+	return 1;
+}
+```
+
 ## 事件处理
 ```c
 case ESP_GAP_BLE_SCAN_RESULT_EVT:
