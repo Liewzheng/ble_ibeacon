@@ -47,27 +47,19 @@
 #define WIFI_PASS              "12345678"
 #define TCP_SERVER_ADDRESS     "192.168.12.125"
 #define TCP_SERVER_PORT        3010
-char TCP_CONNECT_MESSAGE[20];
+char TCP_CONNECT_MESSAGE_g[30] = " ";
 
 const char* MQTT_URI =       "mqtt://atomtechnology.cn:1883";      //MQTT SERVER IP
 const char* MQTT_USER =      "IOT";                      //MQTT SERVER ACCESS USER
 const char* MQTT_PASSWORD =  "LiewIOT2018-";         //MQTT SERVER ACCESS PASSWORD
 
-unsigned char Message_g[100];
-
 static EventGroupHandle_t wifi_event_group;
 const int WIFI_CONNECTED_BIT = BIT0;
 
 
-
-/* ============================================================================
- * 1. TAG:
- *  - DEMO_TAG
- *  - WIFI_TAG
- * 2. iBeacon Vender Configuration
- * ============================================================================*/
+//Tag here for ESP_LOGI();
 static const char* DEMO_TAG = "IBEACON";
-static const char* WIFI_TAG = "WIFI";
+static const char* WIFI_TAG = "   WIFI";
 extern esp_ble_ibeacon_vendor_t vendor_config;
 
 
@@ -106,16 +98,6 @@ char str_Temp[10];
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
 
 
-/* =============================================================================
- * iBeacon Receiver Mode Setting
- * 1. Scan type
- * 2. Owner address type
- * 3. Scan filter policy
- * 4. Scan interval. This is defined as the time interval from when the Controller started its last LE scan until it begins the subsequent LE scan.
- * 5. Scan window. The duration of the LE scan. LE_Scan_Window shall be less than or equal to LE_Scan_Interval¡£
- * 6. The Scan_Duplicates parameter controls whether the Link Layer should filter out duplicate advertising reports (BLE_SCAN_DUPLICATE_ENABLE)
- *    to the Host, or if the Link Layer should generate advertising reports for each packet received
- * ============================================================================*/
 static esp_ble_scan_params_t ble_scan_params = {
     .scan_type              = BLE_SCAN_TYPE_ACTIVE,
     .own_addr_type          = BLE_ADDR_TYPE_PUBLIC,
@@ -124,6 +106,13 @@ static esp_ble_scan_params_t ble_scan_params = {
     .scan_window            = 0x0010,
     .scan_duplicate         = BLE_SCAN_DUPLICATE_DISABLE
 };
+
+
+struct sockaddr_in tcpServerAddr_g;
+
+BaseType_t xReturned_g;
+TaskHandle_t xHandle_tcp_g = NULL;
+int xTaskCreat_tcp_flag_g = 1;
 
 
 char *Decimal_To_Hexadecimal_String(int Decimal_Data)
@@ -142,7 +131,22 @@ char *Decimal_To_Hexadecimal_String(int Decimal_Data)
 	return str_Temp;
 }
 
+int Message_Transmit(unsigned char *Message_Address)
+{
+	int i = 0, j = 0;
+	while(TCP_CONNECT_MESSAGE_g[j])
+	{
+		TCP_CONNECT_MESSAGE_g[j] = NULL;
+		j++;
+	}
 
+	for(i = 0; i < 6; i++)
+	{
+		strcat( TCP_CONNECT_MESSAGE_g, Decimal_To_Hexadecimal_String( (int)*(Message_Address + i) ) );
+	}
+
+	return 1;
+}
 
 void Wifi_Connect()
 {
@@ -157,51 +161,50 @@ void Wifi_Connect()
 	ESP_ERROR_CHECK( esp_wifi_set_config( ESP_IF_WIFI_STA, &wifi_config ) );
 	ESP_ERROR_CHECK( esp_wifi_connect() );
 
-	ESP_LOGI(WIFI_TAG, "[SYSTEM] WiFi is initialized.");
-	ESP_LOGI(WIFI_TAG, "[SYSTEM] Connected to WiFi SSID:[%s] password:[%s]",WIFI_SSID, "********");
+	ESP_LOGI(WIFI_TAG, "[ SYSTEM ] Connected to WiFi SSID:[%s] password:[%s].",WIFI_SSID, "********");
 }
 
-void TCP_Client_Message(unsigned char* Message)
+void TCP_Server_Connect(void)
 {
-	ESP_LOGI(WIFI_TAG, "MESSAGE_CHECK_1");
+	tcpServerAddr_g.sin_addr.s_addr = inet_addr( TCP_SERVER_ADDRESS );
+	tcpServerAddr_g.sin_family = AF_INET;
+	tcpServerAddr_g.sin_port = htons( TCP_SERVER_PORT );
 
-	struct sockaddr_in tcpServerAddr;
-	tcpServerAddr.sin_addr.s_addr = inet_addr(TCP_SERVER_ADDRESS);
-	tcpServerAddr.sin_family = AF_INET;
-	tcpServerAddr.sin_port = htons( TCP_SERVER_PORT );
+	ESP_LOGI(WIFI_TAG, "[ SYSTEM ] Connected to TCP server:[%s:%d].",TCP_SERVER_ADDRESS, TCP_SERVER_PORT);
+}
 
-	ESP_LOGI(WIFI_TAG, "MESSAGE_CHECK_2");
-
+void TCP_Client_Message(void *pvParameters)
+{
 	int s, r;
 	char recv_buf[64];
 
 	while(1)
 	{
-		xEventGroupWaitBits(wifi_event_group,WIFI_CONNECTED_BIT,false,true,portMAX_DELAY);
-	    s = socket(AF_INET, SOCK_STREAM, 0);
+		xEventGroupWaitBits( wifi_event_group, WIFI_CONNECTED_BIT, false, true, portMAX_DELAY );
+	    s = socket( AF_INET, SOCK_STREAM, 0 );
 	    if(s < 0)
 	    {
-	        ESP_LOGE(WIFI_TAG, "... Failed to allocate socket.\n");
+	        ESP_LOGE(WIFI_TAG, "[ SYSTEM ] Failed to allocate socket.\n");
 	        vTaskDelay(1000 / portTICK_PERIOD_MS);
 	        continue;
 	    }
-	    ESP_LOGI(WIFI_TAG, "... allocated socket\n");
-	    if(connect(s, (struct sockaddr *)&tcpServerAddr, sizeof(tcpServerAddr)) != 0)
+	    ESP_LOGI(WIFI_TAG, "[ SYSTEM ] allocated socket.\n");
+	    if(connect(s, (struct sockaddr *)&tcpServerAddr_g, sizeof(tcpServerAddr_g)) != 0)
 	    {
-	        ESP_LOGE(WIFI_TAG, "... socket connect failed errno=%d \n", errno);
+	        ESP_LOGE(WIFI_TAG, "[ SYSTEM ] socket connect failed errno=%d. \n", errno);
 	        close(s);
 	        vTaskDelay(4000 / portTICK_PERIOD_MS);
 	        continue;
 	    }
-	    ESP_LOGI(WIFI_TAG, "... connected \n");
-	    if( write( s , TCP_CONNECT_MESSAGE , strlen( TCP_CONNECT_MESSAGE ) ) < 0)
+	    ESP_LOGI(WIFI_TAG, "[ SYSTEM ] connected. \n");
+	    if( write( s , TCP_CONNECT_MESSAGE_g , strlen( TCP_CONNECT_MESSAGE_g ) ) < 0)
 	    {
-	        ESP_LOGE(WIFI_TAG, "... Send failed \n");
+	        ESP_LOGE(WIFI_TAG, "[ SYSTEM ] Send failed. \n");
 	        close(s);
 	        vTaskDelay(4000 / portTICK_PERIOD_MS);
 	        continue;
 	    }
-	    ESP_LOGI(WIFI_TAG, "... socket send success");
+	    ESP_LOGI(WIFI_TAG, "[ SYSTEM ] socket send success");
 	    do
 	    {
 	        bzero(recv_buf, sizeof(recv_buf));
@@ -211,14 +214,54 @@ void TCP_Client_Message(unsigned char* Message)
 	            putchar(recv_buf[i]);
 	        }
 	    } while(r > 0);
-	    ESP_LOGI(WIFI_TAG, "... done reading from socket. Last read return=%d errno=%d\r\n", r, errno);
+	    ESP_LOGI(WIFI_TAG, "[ SYSTEM ] done reading from socket. Last read return=%d errno=%d\r\n", r, errno);
 	    close(s);
-	    ESP_LOGI(WIFI_TAG, "... new request in 5 seconds");
+	    ESP_LOGI(WIFI_TAG, "[ SYSTEM ] new request in 5 seconds");
 	    vTaskDelay(5000 / portTICK_PERIOD_MS);
 	}
-	ESP_LOGI(WIFI_TAG, "...tcp_client task closed\n");
+	ESP_LOGI(WIFI_TAG, "[ SYSTEM ] tcp_client task closed\n");
 
-	ESP_LOGI(WIFI_TAG, "MESSAGE_CHECK_4");
+	ESP_LOGI(WIFI_TAG, "[ SYSTEM ] TCP_Client_Message()_CHECK_3");
+}
+
+void xTask_TCP(void)
+{
+	if( xTaskCreat_tcp_flag_g)
+	{
+		xReturned_g = xTaskCreate( &TCP_Client_Message, "TCP_Client_Message" , 4048 , NULL , 5 , &xHandle_tcp_g);
+		xTaskCreat_tcp_flag_g = 0;
+	}
+
+	if(xHandle_tcp_g == NULL)
+	{
+		if(xReturned_g == pdPASS)
+		{
+			vTaskResume(xHandle_tcp_g);
+			ESP_LOGI(DEMO_TAG, "[ SYSTEM ] TCP task is resumed.");
+		}
+		else
+		{
+			xReturned_g = xTaskCreate( &TCP_Client_Message, "TCP_Client_Message" , 4048 , NULL , 5 , &xHandle_tcp_g);
+			vTaskSuspend(xHandle_tcp_g);
+			ESP_LOGI(DEMO_TAG, "[ SYSTEM ] TCP task is suspended.");
+		}
+	}
+	else
+	{
+
+		vTaskDelete(xHandle_tcp_g);
+		ESP_LOGI(DEMO_TAG, "[ SYSTEM ] TCP task is killed.");
+	}
+
+
+
+//	if(xReturned == pdPASS)
+//	{
+//		//vTaskDelete(xHandle_tcp_g);
+//		//ESP_LOGI(DEMO_TAG, "[ SYSTEM ] TCP task is killed.");
+//
+//
+//	}
 }
 
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
@@ -226,13 +269,13 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
     switch(event->event_id) {
     case SYSTEM_EVENT_STA_START:
     	Wifi_Connect();
-    	//TCP_Client_Message( TCP_CONNECT_MESSAGE );
+    	TCP_Server_Connect();
 		break;
     case SYSTEM_EVENT_STA_GOT_IP:
 		xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
 		break;
     case SYSTEM_EVENT_STA_CONNECTED:
-    	ESP_LOGI(WIFI_TAG, "[System] TCP_CLIENT_MESSAGE_CHECK_1");
+    	ESP_LOGI(WIFI_TAG, "[ SYSTEM ] Wifi connected successfully.");
 
     	break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
@@ -242,7 +285,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
     default:
         break;
     }
-    ESP_LOGI(WIFI_TAG, "[System] WIFI_EVENT_HANDLER_CHECK_1");
+    ESP_LOGI(WIFI_TAG, "[ SYSTEM ] Didn't enter Wifi event group.");
     return ESP_OK;
 }
 
@@ -252,11 +295,10 @@ void Wifi_Initialize()
 	esp_log_level_set("wifi", ESP_LOG_NONE); // disable wifi driver logging
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
+
     //ESP_ERROR_CHECK( esp_wifi_set_storage( WIFI_STORAGE_RAM ) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK( esp_wifi_start() );
-
-    ESP_LOGI(WIFI_TAG, "[System] WiFi_INITIALIZATION_CHECK_1");
 
 }
 
@@ -267,7 +309,6 @@ void Wifi_Initialize()
  * int Device_Information_Record(unsigned char *Address)                 //¼ÇÂ¼
  * int Device_Information_List()
  * int Device_Address_Sort()
- * int Message_Transmit(unsigned char *Message_Address)
  * ============================================================================*/
 //0C F3 EE Filter_conditionor
 int Device_Address_Filter(unsigned char *Address)
@@ -336,7 +377,7 @@ int Device_Information_List(void)
 	}
 	else
 	{
-		ESP_LOGI(DEMO_TAG,"[System] Device Number Required: 20 at least");
+		ESP_LOGI(DEMO_TAG,"[ SYSTEM ] Device Number Required: 20 at least");
 		return 0;
 	}
 
@@ -382,46 +423,6 @@ int Device_Address_Sort(void)
 	return 1;
 }
 
-int Message_Transmit(unsigned char *Message_Address)
-{
-	//ESP_LOGI(DEMO_TAG, "[System]  Message_Transmit() CHECK_1");
-	//ESP_LOGI(DEMO_TAG, "[System] TCP_CONNECT_MESSAGE[] = %s", TCP_CONNECT_MESSAGE );
-
-	int i = 0;
-	for(i = 0; i < 6; i++)
-	{
-		//ESP_LOGI(DEMO_TAG, "[System]  Message_Transmit() CHECK_%d",i+2);
-		strcat( TCP_CONNECT_MESSAGE, Decimal_To_Hexadecimal_String( (int)*(Message_Address + i) ) );
-		//ESP_LOGI(DEMO_TAG, "TCP_CONNECT_MESSAGE[] = %s", TCP_CONNECT_MESSAGE );
-	}
-
-	ESP_LOGI(DEMO_TAG, "[System] TCP_CONNECT_MESSAGE[] = %s", TCP_CONNECT_MESSAGE );
-	//ESP_LOGI(DEMO_TAG, "[System]  Message_Transmit() succeeded.");
-	return 1;
-}
-
-void xTask_TCP(void)
-{
-	BaseType_t xReturned;
-	TaskHandle_t xHandle = NULL;
-	xReturned = xTaskCreate( &TCP_Client_Message, "TCP_Client_Message" , 4048 , NULL , 5 , NULL);
-
-	ESP_LOGI(DEMO_TAG, "[System] xTaskCreate()");
-
-	if(xReturned == pdPASS)
-	{
-		vTaskDelete(xHandle);
-	}
-}
-
-/*======================================================
- * iBeacon Events Handler:
- * ---ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT
- * ---ESP_GAP_BLE_SCAN_START_COMPLETE_EVT
- * ---ESP_GAP_BLE_SCAN_RESULT_EVT
- *    |---ESP_GAP_SEARCH_INQ_RES_EVT
- * ---ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT
- *====================================================*/
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     esp_err_t err;
@@ -462,12 +463,12 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
         				if( Device_Information_Record( &(scan_result->scan_rst.bda) ,major, minor) )
         				{
         					ESP_LOGI(DEMO_TAG, "----------New Beacon Found----------");
-        					ESP_LOGI(DEMO_TAG, "[System] New Device Scanned: %d ", Device_Number_g);
+        					ESP_LOGI(DEMO_TAG, "[ SYSTEM ] New Device Scanned: %d ", Device_Number_g);
         					esp_log_buffer_hex("IBEACON: Device address", scan_result->scan_rst.bda, ESP_BD_ADDR_LEN );
         					ESP_LOGI(DEMO_TAG, "Major & Minor: 0x%04X (%d), 0x%04X (%d)", major, major, minor, minor);
 
         					Message_Transmit( &(scan_result->scan_rst.bda) );
-        					ESP_LOGI(DEMO_TAG, "[System] xTask_TCP 1");
+        					ESP_LOGI(DEMO_TAG, "[ SYSTEM ] TCP_CONNECT_MESSAGE[] = %s", TCP_CONNECT_MESSAGE_g );
         					xTask_TCP();
         				}
         				//Old Beacon Found
@@ -499,11 +500,11 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
     case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
         if ((err = param->scan_stop_cmpl.status) != ESP_BT_STATUS_SUCCESS)
         {
-            ESP_LOGE(DEMO_TAG, "[System] Scan stop failed: %s", esp_err_to_name(err));
+            ESP_LOGE(DEMO_TAG, "[System] Scanning stopped failed: %s.", esp_err_to_name(err));
         }
         else
         {
-            ESP_LOGI(DEMO_TAG, "[System] Stop scan successfully");
+            ESP_LOGI(DEMO_TAG, "[System] Scanning stopped successfully.");
         }
         break;
      default:
@@ -511,16 +512,15 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
     }
 }
 
-
 void ble_ibeacon_appRegister(void)
 {
     esp_err_t status;
 
-    ESP_LOGI(DEMO_TAG, "[System] Register Callback");
+    ESP_LOGI(DEMO_TAG, "[ SYSTEM ] Register Callback.");
 
     //register the scan callback function to the gap module
     if ((status = esp_ble_gap_register_callback(esp_gap_cb)) != ESP_OK) {
-        ESP_LOGE(DEMO_TAG, "[System] Gap Register Error: %s", esp_err_to_name(status));
+        ESP_LOGE(DEMO_TAG, "[ SYSTEM ] Gap Register Error: %s.", esp_err_to_name(status));
         return;
     }
 }
@@ -532,33 +532,39 @@ void ble_ibeacon_init(void)
     ble_ibeacon_appRegister();
 }
 
+
+
+
+
 void app_main()
 {
 	wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK( esp_event_loop_init( wifi_event_handler, NULL ) );
-
-	esp_err_t ret = nvs_flash_init();
-	if (ret == ESP_ERR_NVS_NO_FREE_PAGES)
+	if(wifi_event_group != NULL)
 	{
-	    ESP_ERROR_CHECK(nvs_flash_erase());
-	    ret = nvs_flash_init();
+		ESP_LOGI(DEMO_TAG, "[ SYSTEM ] WiFi events group was created.");
+		ESP_ERROR_CHECK( esp_event_loop_init( wifi_event_handler, NULL ) );               //
+
+		esp_err_t ret = nvs_flash_init();
+		while(ret == ESP_ERR_NVS_NO_FREE_PAGES)
+		{
+			ESP_LOGI(DEMO_TAG, "[ SYSTEM ] NVS flash was not initialized successfully. Rebuilding....");
+			ESP_ERROR_CHECK( nvs_flash_erase() );
+			ret = nvs_flash_init();
+		}
+		ESP_ERROR_CHECK( ret );
+
+		ESP_ERROR_CHECK( esp_bt_controller_mem_release( ESP_BT_MODE_CLASSIC_BT ) );
+
+		esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+		esp_bt_controller_init( &bt_cfg );
+		esp_bt_controller_enable( ESP_BT_MODE_BLE );
+
+		Wifi_Initialize();
+		ble_ibeacon_init();
+		esp_ble_gap_set_scan_params( &ble_scan_params );
 	}
-	ESP_ERROR_CHECK( ret );
-
-
-    ESP_ERROR_CHECK( esp_bt_controller_mem_release( ESP_BT_MODE_CLASSIC_BT ) );
-
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    esp_bt_controller_init( &bt_cfg );
-    esp_bt_controller_enable( ESP_BT_MODE_BLE );
-
-    Wifi_Initialize();
-	ble_ibeacon_init();
-	esp_ble_gap_set_scan_params( &ble_scan_params );
-
-	//Wifi_Initialize();
-	//ESP_LOGI(DEMO_TAG, "[System] xTask_TCP 2");
-	//xTask_TCP();
+	else
+		ESP_LOGI(DEMO_TAG, "[ SYSTEM ] WiFi events group was not created successfully.");
 
 }
 
